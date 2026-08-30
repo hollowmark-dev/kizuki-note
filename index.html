@@ -94,8 +94,12 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .filter-chip.is-active{ background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent); }
 .entry-list{ display:flex; flex-direction:column; gap:10px; }
 .entry-card{ background:var(--surface); border:0.5px solid var(--border); border-radius:12px; overflow:hidden; }
-.entry-head{ padding:14px 16px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; cursor:pointer; }
+.entry-head{ position:relative; overflow:hidden; padding:14px 16px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; cursor:pointer; touch-action:pan-y; user-select:none; -webkit-user-select:none; }
+.entry-head::before{ content:''; position:absolute; inset:0; background:var(--danger-bg); width:0%; z-index:0; pointer-events:none; }
+.entry-head.is-holding::before{ width:100%; transition:width 800ms linear; }
+.entry-head > *{ position:relative; z-index:1; }
 .entry-titlewrap{ min-width:0; }
+.list-hint{ font-size:12px; color:var(--ink-faint); margin:0 0 10px; text-align:center; }
 .entry-title{ font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px; text-wrap:balance; }
 .entry-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .genre-badge{ font-size:11px; padding:3px 9px; border-radius:999px; white-space:nowrap; }
@@ -112,11 +116,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .entry-card.is-open .chevron{ transform:rotate(180deg); }
 .entry-body{ padding:0 16px 16px; border-top:0.5px solid var(--border); padding-top:14px; }
 .row-actions{ display:flex; gap:10px; margin-top:12px; }
-.btn-save{ flex:1; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-family:var(--font-body); font-size:14px; font-weight:500; cursor:pointer; }
-.btn-delete-hold{ position:relative; overflow:hidden; padding:10px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:transparent; color:var(--danger); font-family:var(--font-body); font-size:14px; cursor:pointer; touch-action:none; user-select:none; -webkit-user-select:none; }
-.btn-delete-hold::before{ content:''; position:absolute; inset:0; background:var(--danger-bg); width:0%; z-index:0; }
-.btn-delete-hold.is-holding::before{ width:100%; transition:width 800ms linear; }
-.btn-delete-hold span{ position:relative; z-index:1; }
+.btn-save{ width:100%; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-family:var(--font-body); font-size:14px; font-weight:500; cursor:pointer; }
 .empty-state{ text-align:center; padding:48px 16px; color:var(--ink-soft); }
 .empty-state p{ margin:6px 0 0; font-size:14px; }
 .empty-state strong{ font-family:var(--font-display); font-size:17px; color:var(--ink); font-weight:600; }
@@ -359,9 +359,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   function setFilter(g) { filterGenre = g; render(); }
 
   function toggleExpand(id) {
-    if (expandedId === id) { expandedId = null; render(); return; }
     var entry = state.entries.find(function (e) { return e.id === id; });
-    if (entry && !drafts[id]) {
+    if (!entry) return;
+    if (expandedId === id) { expandedId = null; render(); return; }
+    if (!drafts[id]) {
       drafts[id] = {
         title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
         points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
@@ -504,7 +505,6 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
           '<p class="error-text" id="edit-error-' + entry.id + '" aria-live="polite"></p>' +
           '<div class="row-actions">' +
             '<button type="button" class="btn-save" data-action="save" data-id="' + entry.id + '">保存する</button>' +
-            '<button type="button" class="btn-delete-hold" data-id="' + entry.id + '"><span>長押しで削除</span></button>' +
           '</div>' +
         '</div>';
     }
@@ -538,7 +538,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         ? '<div class="empty-state"><strong>まだ記録がありません</strong><p>「追加」タブからタイトルを記録してみましょう。</p></div>'
         : '<div class="empty-state"><p>' + (searchQuery ? '検索に一致する記録がありません。' : 'このジャンルの記録はまだありません。') + '</p></div>';
     } else {
-      listHtml = '<div class="entry-list">' + list.map(renderEntryCard).join('') + '</div>';
+      listHtml = '<p class="list-hint">タップで開く・長押しで削除</p><div class="entry-list">' + list.map(renderEntryCard).join('') + '</div>';
     }
     return (
       '<div class="field"><input type="text" id="search-box" placeholder="タイトル・著者・メモを検索" value="' + esc(searchQuery) + '"></div>' +
@@ -681,20 +681,29 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         }
       }
     });
+    var holdStartX = 0, holdStartY = 0;
     app.addEventListener('pointerdown', function (e) {
-      var btn = e.target.closest('.btn-delete-hold');
-      if (!btn) return;
-      btn.classList.add('is-holding');
+      var head = e.target.closest('.entry-head');
+      if (!head) return;
+      holdStartX = e.clientX; holdStartY = e.clientY;
+      head.classList.add('is-holding');
       clearTimeout(holdTimer);
-      var holdId = btn.dataset.id;
+      var holdId = head.dataset.id;
       holdTimer = setTimeout(function () {
-        btn.classList.remove('is-holding');
+        head.classList.remove('is-holding');
         handleDelete(holdId, true);
       }, 800);
     });
+    app.addEventListener('pointermove', function (e) {
+      if (!holdTimer) return;
+      if (Math.abs(e.clientX - holdStartX) > 10 || Math.abs(e.clientY - holdStartY) > 10) {
+        cancelHold();
+      }
+    });
     var cancelHold = function () {
       clearTimeout(holdTimer);
-      document.querySelectorAll('.btn-delete-hold.is-holding').forEach(function (b) { b.classList.remove('is-holding'); });
+      holdTimer = null;
+      document.querySelectorAll('.entry-head.is-holding').forEach(function (b) { b.classList.remove('is-holding'); });
     };
     window.addEventListener('pointerup', cancelHold);
     window.addEventListener('pointercancel', cancelHold);
