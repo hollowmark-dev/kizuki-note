@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>気づきノート</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#EEF0EC; --surface:#FFFFFF; --surface-2:#F6F7F2;
+  --ink:#262922; --ink-soft:#63685C; --ink-faint:#9A9D8F;
+  --border:rgba(38,41,34,0.13); --border-strong:rgba(38,41,34,0.24);
+  --accent:#34405C; --accent-soft:#E3E7EF; --accent-ink:#1D2740;
+  --danger:#A23B2E; --danger-bg:#F3E2DE;
+  --g-work-bg:#F1E3DA; --g-work-fg:#7A4A31;
+  --g-health-bg:#E4EAE0; --g-health-fg:#3E5A41;
+  --g-money-bg:#F1E9D2; --g-money-fg:#7A5F1E;
+  --g-relationships-bg:#F2E1E6; --g-relationships-fg:#7A3E52;
+  --g-growth-bg:#E7E3F0; --g-growth-fg:#4C3E73;
+  --g-other-bg:#EAE7E0; --g-other-fg:#5A5348;
+  --font-display:'Shippori Mincho', serif;
+  --font-body:'Zen Kaku Gothic New', sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1B1D18; --surface:#242620; --surface-2:#2B2D25;
+    --ink:#ECEAE1; --ink-soft:#ABAC9C; --ink-faint:#767869;
+    --border:rgba(236,234,225,0.14); --border-strong:rgba(236,234,225,0.26);
+    --accent:#92A6D9; --accent-soft:#2B3550; --accent-ink:#D3DCF3;
+    --danger:#E28376; --danger-bg:#3B2620;
+    --g-work-bg:#3B2A1F; --g-work-fg:#E3A585;
+    --g-health-bg:#25332A; --g-health-fg:#A9C9AC;
+    --g-money-bg:#372F1B; --g-money-fg:#E0C177;
+    --g-relationships-bg:#372430; --g-relationships-fg:#E3A8BC;
+    --g-growth-bg:#2B2640; --g-growth-fg:#C1B3E6;
+    --g-other-bg:#302E26; --g-other-fg:#C6C1B4;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1B1D18; --surface:#242620; --surface-2:#2B2D25;
+  --ink:#ECEAE1; --ink-soft:#ABAC9C; --ink-faint:#767869;
+  --border:rgba(236,234,225,0.14); --border-strong:rgba(236,234,225,0.26);
+  --accent:#92A6D9; --accent-soft:#2B3550; --accent-ink:#D3DCF3;
+  --danger:#E28376; --danger-bg:#3B2620;
+  --g-work-bg:#3B2A1F; --g-work-fg:#E3A585;
+  --g-health-bg:#25332A; --g-health-fg:#A9C9AC;
+  --g-money-bg:#372F1B; --g-money-fg:#E0C177;
+  --g-relationships-bg:#372430; --g-relationships-fg:#E3A8BC;
+  --g-growth-bg:#2B2640; --g-growth-fg:#C1B3E6;
+  --g-other-bg:#302E26; --g-other-fg:#C6C1B4;
+}
+*{ box-sizing:border-box; }
+body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
+#app{ max-width:480px; margin:0 auto; padding:0 16px 48px; }
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.header{ padding:24px 0 12px; }
+.header h1{ font-family:var(--font-display); font-weight:600; font-size:22px; margin:0 0 2px; text-wrap:balance; }
+.header p{ margin:0; color:var(--ink-soft); font-size:13px; }
+.tabs{ position:sticky; top:0; background:var(--bg); padding:8px 0 12px; display:flex; gap:8px; z-index:5; }
+.tab-btn{ flex:1; padding:10px 12px; border-radius:10px; border:0.5px solid var(--border); background:var(--surface); color:var(--ink-soft); font-family:var(--font-body); font-size:14px; font-weight:500; cursor:pointer; }
+.tab-btn.is-active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+.card{ background:var(--surface); border:0.5px solid var(--border); border-radius:12px; padding:16px; }
+label{ display:block; font-size:12px; color:var(--ink-soft); margin:0 0 6px; }
+input[type=text], textarea{ width:100%; font-family:var(--font-body); font-size:15px; color:var(--ink); background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:10px 12px; }
+input[type=text]:focus, textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+textarea{ resize:vertical; min-height:84px; line-height:1.6; }
+.field{ margin-bottom:14px; }
+.chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.chip{ padding:7px 14px; border-radius:999px; border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--ink-soft); font-family:var(--font-body); font-size:13px; cursor:pointer; }
+.chip.is-selected{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.chip.genre-work.is-selected{ background:var(--g-work-fg); border-color:var(--g-work-fg); }
+.chip.genre-health.is-selected{ background:var(--g-health-fg); border-color:var(--g-health-fg); }
+.chip.genre-money.is-selected{ background:var(--g-money-fg); border-color:var(--g-money-fg); }
+.chip.genre-relationships.is-selected{ background:var(--g-relationships-fg); border-color:var(--g-relationships-fg); }
+.chip.genre-growth.is-selected{ background:var(--g-growth-fg); border-color:var(--g-growth-fg); }
+.chip.genre-other.is-selected{ background:var(--g-other-fg); border-color:var(--g-other-fg); }
+.btn-primary{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--accent); color:#fff; font-family:var(--font-body); font-size:15px; font-weight:500; cursor:pointer; margin-top:4px; }
+.btn-primary:active{ transform:scale(0.99); }
+.btn-primary:disabled{ opacity:0.6; cursor:default; }
+.error-text{ color:var(--danger); font-size:13px; margin-top:8px; min-height:16px; }
+.pending-note{ font-size:13px; color:var(--ink-soft); margin-top:16px; text-align:center; }
+.pending-note button{ background:none; border:none; color:var(--accent); text-decoration:underline; font-family:var(--font-body); font-size:13px; cursor:pointer; padding:0; }
+.filter-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.filter-chip{ padding:6px 12px; border-radius:999px; border:0.5px solid var(--border-strong); background:var(--surface); color:var(--ink-soft); font-size:12px; cursor:pointer; }
+.filter-chip.is-active{ background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent); }
+.entry-list{ display:flex; flex-direction:column; gap:10px; }
+.entry-card{ background:var(--surface); border:0.5px solid var(--border); border-radius:12px; overflow:hidden; }
+.entry-head{ padding:14px 16px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; cursor:pointer; }
+.entry-titlewrap{ min-width:0; }
+.entry-title{ font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px; text-wrap:balance; }
+.entry-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.genre-badge{ font-size:11px; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+.genre-badge.genre-work{ background:var(--g-work-bg); color:var(--g-work-fg); }
+.genre-badge.genre-health{ background:var(--g-health-bg); color:var(--g-health-fg); }
+.genre-badge.genre-money{ background:var(--g-money-bg); color:var(--g-money-fg); }
+.genre-badge.genre-relationships{ background:var(--g-relationships-bg); color:var(--g-relationships-fg); }
+.genre-badge.genre-growth{ background:var(--g-growth-bg); color:var(--g-growth-fg); }
+.genre-badge.genre-other{ background:var(--g-other-bg); color:var(--g-other-fg); }
+.date-text{ font-size:11px; color:var(--ink-faint); }
+.memo-badge{ font-size:11px; color:var(--danger); background:var(--danger-bg); padding:3px 9px; border-radius:999px; }
+.count-badge{ font-size:11px; color:var(--accent-ink); background:var(--accent-soft); padding:3px 9px; border-radius:999px; }
+.chevron{ color:var(--ink-faint); font-size:18px; flex-shrink:0; transition:transform 0.15s; }
+.entry-card.is-open .chevron{ transform:rotate(180deg); }
+.entry-body{ padding:0 16px 16px; border-top:0.5px solid var(--border); padding-top:14px; }
+.row-actions{ display:flex; gap:10px; margin-top:12px; }
+.btn-save{ flex:1; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-family:var(--font-body); font-size:14px; font-weight:500; cursor:pointer; }
+.btn-delete{ padding:10px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:transparent; color:var(--danger); font-family:var(--font-body); font-size:14px; cursor:pointer; }
+.empty-state{ text-align:center; padding:48px 16px; color:var(--ink-soft); }
+.empty-state p{ margin:6px 0 0; font-size:14px; }
+.empty-state strong{ font-family:var(--font-display); font-size:17px; color:var(--ink); font-weight:600; }
+.btn-copy{ width:100%; padding:10px; border-radius:8px; border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--ink); font-family:var(--font-body); font-size:13px; cursor:pointer; }
+.copy-status{ font-size:12px; color:var(--ink-soft); margin:6px 0 0; min-height:14px; }
+.copy-fallback{ width:100%; margin-top:8px; font-family:var(--font-body); font-size:12px; color:var(--ink); background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:8px; min-height:60px; }
+.review-section{ margin-bottom:28px; }
+.review-heading{ margin:0 0 12px; }
+.review-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
+.review-list li{ padding-left:14px; position:relative; }
+.review-list li::before{ content:''; position:absolute; left:0; top:9px; width:5px; height:5px; border-radius:50%; background:var(--ink-faint); }
+.review-text{ display:block; font-size:15px; line-height:1.6; }
+.review-source{ display:block; font-size:12px; color:var(--ink-faint); margin-top:3px; }
+@media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  var STORAGE_KEY = 'kizuki-note-entries';
+  var SEED_ENTRIES = [
+    { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-28' },
+    { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-26' },
+    { id: 'mt8mvmljcw0cr', title: '7つの習慣', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-25' }
+  ];
+
+  var GENRES = [
+    { id: 'work', label: '仕事' },
+    { id: 'health', label: '健康' },
+    { id: 'money', label: 'お金' },
+    { id: 'relationships', label: '人間関係' },
+    { id: 'growth', label: '自己啓発' },
+    { id: 'other', label: 'その他' }
+  ];
+
+  function loadEntries() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return SEED_ENTRIES;
+  }
+
+  function saveEntries(entries) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+  }
+
+  var state = { entries: loadEntries() };
+  var activeTab = 'add';
+  var filterGenre = 'all';
+  var expandedId = null;
+  var drafts = {};
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function todayStr() {
+    var d = new Date();
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  function genreOf(id) {
+    for (var i = 0; i < GENRES.length; i++) if (GENRES[i].id === id) return GENRES[i];
+    return GENRES[GENRES.length - 1];
+  }
+
+  function bulletsOf(memo) {
+    return (memo || '').split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+  }
+
+  function persist(newEntries) {
+    state = { entries: newEntries };
+    saveEntries(newEntries);
+    render();
+  }
+
+  async function copyResearchPrompt(id) {
+    var entry = state.entries.find(function (e) { return e.id === id; });
+    if (!entry) return;
+    var d = drafts[id] || {};
+    var title = (d.title !== undefined ? d.title : entry.title).trim();
+    var author = (d.author !== undefined ? d.author : entry.author || '').trim();
+    var prompt = author
+      ? '「' + title + '」（著者: ' + author + '）について、要約と学べる要点を箇条書きで教えて'
+      : '「' + title + '」について、要約と学べる要点を箇条書きで教えて';
+    var statusEl = document.getElementById('copy-status-' + id);
+    var fallbackEl = document.getElementById('copy-fallback-' + id);
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard api');
+      await navigator.clipboard.writeText(prompt);
+      if (statusEl) statusEl.textContent = 'コピーしました。Claudeアプリに貼り付けてね';
+      if (fallbackEl) fallbackEl.style.display = 'none';
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '自動コピーできませんでした。下の文章を選択してコピーしてください';
+      if (fallbackEl) {
+        fallbackEl.style.display = 'block';
+        fallbackEl.value = prompt;
+        fallbackEl.focus();
+        fallbackEl.select();
+      }
+    }
+  }
+
+  function setTab(t) { activeTab = t; expandedId = null; render(); }
+  function setFilter(g) { filterGenre = g; render(); }
+
+  function toggleExpand(id) {
+    if (expandedId === id) { expandedId = null; render(); return; }
+    var entry = state.entries.find(function (e) { return e.id === id; });
+    if (entry && !drafts[id]) {
+      drafts[id] = { title: entry.title, author: entry.author || '', source: entry.source || '', memo: entry.memo || '', genre: entry.genre };
+    }
+    expandedId = id;
+    render();
+  }
+
+  function handleAdd() {
+    var input = document.getElementById('add-title');
+    var errEl = document.getElementById('add-error');
+    var title = input.value.trim();
+    var selected = document.querySelector('#add-genres .chip.is-selected');
+    if (!title) { errEl.textContent = 'タイトルを入力してください'; return; }
+    if (!selected) { errEl.textContent = 'ジャンルを選んでください'; return; }
+    errEl.textContent = '';
+    var entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      title: title, genre: selected.dataset.genre, author: '', source: '', memo: '', date: todayStr()
+    };
+    persist([entry].concat(state.entries));
+  }
+
+  function handleSaveEntry(id) {
+    var d = drafts[id] || {};
+    var title = (d.title || '').trim();
+    if (!title) {
+      document.getElementById('edit-error-' + id).textContent = 'タイトルを入力してください';
+      return;
+    }
+    var newEntries = state.entries.map(function (e) {
+      if (e.id !== id) return e;
+      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), memo: (d.memo || '').trim() };
+    });
+    persist(newEntries);
+  }
+
+  function handleDelete(id) {
+    if (!confirm('この記録を削除しますか？')) return;
+    persist(state.entries.filter(function (e) { return e.id !== id; }));
+  }
+
+  function renderAddTab() {
+    var pending = state.entries.filter(function (e) { return !e.memo; }).length;
+    var chips = GENRES.map(function (g) {
+      return '<button type="button" class="chip genre-' + g.id + '" data-action="add-genre" data-genre="' + g.id + '">' + esc(g.label) + '</button>';
+    }).join('');
+    var pendingHtml = pending > 0
+      ? '<p class="pending-note">メモ未記入が ' + pending + ' 件あります　<button type="button" data-action="tab" data-tab="browse">本棚で書く</button></p>'
+      : '';
+    return (
+      '<div class="card">' +
+        '<div class="field">' +
+          '<label for="add-title">聴いた本・動画のタイトル</label>' +
+          '<input type="text" id="add-title" placeholder="例: 7つの習慣">' +
+        '</div>' +
+        '<div class="field">' +
+          '<label>ジャンル</label>' +
+          '<div class="chip-row" id="add-genres">' + chips + '</div>' +
+        '</div>' +
+        '<button type="button" class="btn-primary" data-action="submit-add">追加する</button>' +
+        '<p class="error-text" id="add-error" aria-live="polite"></p>' +
+      '</div>' +
+      pendingHtml
+    );
+  }
+
+  function renderEntryCard(entry) {
+    var isOpen = expandedId === entry.id;
+    var g = genreOf(entry.genre);
+    var bulletCount = bulletsOf(entry.memo).length;
+    var badges = '<span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span>' +
+      '<span class="date-text">' + esc(entry.date) + '</span>' +
+      (bulletCount > 0 ? '<span class="count-badge">気づき ' + bulletCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>');
+    var body = '';
+    if (isOpen) {
+      var d = drafts[entry.id] || { title: entry.title, author: entry.author || '', source: entry.source || '', memo: entry.memo || '', genre: entry.genre };
+      var editChips = GENRES.map(function (gg) {
+        var sel = d.genre === gg.id ? ' is-selected' : '';
+        return '<button type="button" class="chip genre-' + gg.id + sel + '" data-action="edit-genre" data-id="' + entry.id + '" data-genre="' + gg.id + '">' + esc(gg.label) + '</button>';
+      }).join('');
+      body =
+        '<div class="entry-body">' +
+          '<div class="field">' +
+            '<label for="et-' + entry.id + '">タイトル</label>' +
+            '<input type="text" id="et-' + entry.id + '" data-field="title" data-id="' + entry.id + '" value="' + esc(d.title) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label>ジャンル</label>' +
+            '<div class="chip-row">' + editChips + '</div>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="ea-' + entry.id + '">著者</label>' +
+            '<input type="text" id="ea-' + entry.id + '" data-field="author" data-id="' + entry.id + '" value="' + esc(d.author) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="es-' + entry.id + '">情報源</label>' +
+            '<input type="text" id="es-' + entry.id + '" data-field="source" data-id="' + entry.id + '" placeholder="YouTube / フライヤー / 本 など" value="' + esc(d.source) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<button type="button" class="btn-copy" data-action="copy-research" data-id="' + entry.id + '">Claude用の調査文をコピー</button>' +
+            '<p class="copy-status" id="copy-status-' + entry.id + '" aria-live="polite"></p>' +
+            '<textarea class="copy-fallback" id="copy-fallback-' + entry.id + '" readonly style="display:none;"></textarea>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="em-' + entry.id + '">学び・気づき（1行に1つずつ）</label>' +
+            '<textarea id="em-' + entry.id + '" data-field="memo" data-id="' + entry.id + '" placeholder="心に残ったポイントを1行ずつ書く">' + esc(d.memo) + '</textarea>' +
+          '</div>' +
+          '<p class="error-text" id="edit-error-' + entry.id + '" aria-live="polite"></p>' +
+          '<div class="row-actions">' +
+            '<button type="button" class="btn-save" data-action="save" data-id="' + entry.id + '">保存する</button>' +
+            '<button type="button" class="btn-delete" data-action="delete" data-id="' + entry.id + '">削除</button>' +
+          '</div>' +
+        '</div>';
+    }
+    return (
+      '<div class="entry-card' + (isOpen ? ' is-open' : '') + '" data-entry-id="' + entry.id + '">' +
+        '<div class="entry-head" data-action="toggle" data-id="' + entry.id + '">' +
+          '<div class="entry-titlewrap">' +
+            '<p class="entry-title">' + esc(entry.title) + '</p>' +
+            '<div class="entry-meta">' + badges + '</div>' +
+          '</div>' +
+          '<span class="chevron" aria-hidden="true">⌄</span>' +
+        '</div>' +
+        body +
+      '</div>'
+    );
+  }
+
+  function renderBrowseTab() {
+    var filterChips = ['<button type="button" class="filter-chip' + (filterGenre === 'all' ? ' is-active' : '') + '" data-action="filter" data-genre="all">全て</button>']
+      .concat(GENRES.map(function (g) {
+        return '<button type="button" class="filter-chip' + (filterGenre === g.id ? ' is-active' : '') + '" data-action="filter" data-genre="' + g.id + '">' + esc(g.label) + '</button>';
+      })).join('');
+    var list = state.entries
+      .filter(function (e) { return filterGenre === 'all' || e.genre === filterGenre; })
+      .slice()
+      .sort(function (a, b) { return b.date.localeCompare(a.date) || b.id.localeCompare(a.id); });
+    var listHtml;
+    if (list.length === 0) {
+      listHtml = state.entries.length === 0
+        ? '<div class="empty-state"><strong>まだ記録がありません</strong><p>「追加」タブからタイトルを記録してみましょう。</p></div>'
+        : '<div class="empty-state"><p>このジャンルの記録はまだありません。</p></div>';
+    } else {
+      listHtml = '<div class="entry-list">' + list.map(renderEntryCard).join('') + '</div>';
+    }
+    return '<div class="filter-row">' + filterChips + '</div>' + listHtml;
+  }
+
+  function renderReviewTab() {
+    var byGenre = {};
+    GENRES.forEach(function (g) { byGenre[g.id] = []; });
+    state.entries.forEach(function (e) {
+      bulletsOf(e.memo).forEach(function (b) {
+        byGenre[e.genre].push({ text: b, title: e.title });
+      });
+    });
+    var totalCount = GENRES.reduce(function (sum, g) { return sum + byGenre[g.id].length; }, 0);
+    if (totalCount === 0) {
+      return '<div class="empty-state"><strong>まだ気づきがありません</strong><p>本棚でメモを書くと、ここにジャンルごとにまとまって表示されます。</p></div>';
+    }
+    return GENRES.map(function (g) {
+      var items = byGenre[g.id];
+      if (!items.length) return '';
+      var lis = items.map(function (it) {
+        return '<li><span class="review-text">' + esc(it.text) + '</span><span class="review-source">' + esc(it.title) + '</span></li>';
+      }).join('');
+      return '<section class="review-section">' +
+        '<h2 class="review-heading"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span></h2>' +
+        '<ul class="review-list">' + lis + '</ul>' +
+      '</section>';
+    }).join('');
+  }
+
+  function render() {
+    var app = document.getElementById('app');
+    app.innerHTML =
+      '<div class="header"><h1>気づきノート</h1><p>聴いた本・動画の学びをジャンル別に</p></div>' +
+      '<div class="tabs" role="tablist">' +
+        '<button type="button" class="tab-btn' + (activeTab === 'add' ? ' is-active' : '') + '" data-action="tab" data-tab="add">追加</button>' +
+        '<button type="button" class="tab-btn' + (activeTab === 'browse' ? ' is-active' : '') + '" data-action="tab" data-tab="browse">本棚</button>' +
+        '<button type="button" class="tab-btn' + (activeTab === 'review' ? ' is-active' : '') + '" data-action="tab" data-tab="review">ふりかえり</button>' +
+      '</div>' +
+      (activeTab === 'add' ? renderAddTab() : activeTab === 'browse' ? renderBrowseTab() : renderReviewTab());
+  }
+
+  function init() {
+    var app = document.getElementById('app');
+    app.addEventListener('click', function (e) {
+      var el = e.target.closest('[data-action]');
+      if (!el) return;
+      var action = el.dataset.action;
+      if (action === 'tab') setTab(el.dataset.tab);
+      else if (action === 'add-genre') {
+        document.querySelectorAll('#add-genres .chip').forEach(function (c) { c.classList.toggle('is-selected', c === el); });
+      }
+      else if (action === 'submit-add') handleAdd();
+      else if (action === 'filter') setFilter(el.dataset.genre);
+      else if (action === 'toggle') toggleExpand(el.dataset.id);
+      else if (action === 'edit-genre') {
+        var id = el.dataset.id;
+        if (!drafts[id]) drafts[id] = {};
+        drafts[id].genre = el.dataset.genre;
+        el.parentElement.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('is-selected', c === el); });
+      }
+      else if (action === 'save') handleSaveEntry(el.dataset.id);
+      else if (action === 'delete') handleDelete(el.dataset.id);
+      else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
+    });
+    app.addEventListener('input', function (e) {
+      var field = e.target.dataset.field;
+      var id = e.target.dataset.id;
+      if (!field || !id) return;
+      if (!drafts[id]) drafts[id] = {};
+      drafts[id][field] = e.target.value;
+    });
+    render();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
