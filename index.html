@@ -329,8 +329,9 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var author = (d.author !== undefined ? d.author : entry.author || '').trim();
     var subject = author ? '「' + title + '」（著者: ' + author + '）' : '「' + title + '」';
     var prompt = subject + 'について、学べる重要なポイントを5つくらい、次の形式で書き出して。\n\n' +
-      'キーフレーズ: (一言で)\n解説: (2〜3文の具体的な説明)\n\n' +
-      'これを繰り返す形式で、他の説明文は不要。';
+      'キーフレーズ: 「〜する」「〜しない」のように動詞で言い切る形にする。体言止めや抽象的な名詞句（例:「〜の技術」「〜という考え方」）は禁止。あとで見返した時に一目で意味が分かる具体的な行動・主張にする\n' +
+      '解説: 2〜3文の具体的な説明\n\n' +
+      'これを繰り返す形式で、他の説明文は不要。文体は「〜だ」「〜である」調の言い切りで統一し、です・ます調の敬語は使わないこと。';
     var statusEl = document.getElementById('copy-status-' + id);
     var fallbackEl = document.getElementById('copy-fallback-' + id);
     try {
