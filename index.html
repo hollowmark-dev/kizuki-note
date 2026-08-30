@@ -691,7 +691,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var holdId = head.dataset.id;
       holdTimer = setTimeout(function () {
         head.classList.remove('is-holding');
-        handleDelete(holdId, true);
+        handleDelete(holdId);
       }, 800);
     });
     app.addEventListener('pointermove', function (e) {
