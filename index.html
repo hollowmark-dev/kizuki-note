@@ -327,9 +327,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var d = drafts[id] || {};
     var title = (d.title !== undefined ? d.title : entry.title).trim();
     var author = (d.author !== undefined ? d.author : entry.author || '').trim();
-    var prompt = author
-      ? '「' + title + '」（著者: ' + author + '）について、要約と学べる要点を箇条書きで教えて'
-      : '「' + title + '」について、要約と学べる要点を箇条書きで教えて';
+    var subject = author ? '「' + title + '」（著者: ' + author + '）' : '「' + title + '」';
+    var prompt = subject + 'について、学べる重要なポイントを5つくらい、次の形式で書き出して。\n\n' +
+      'キーフレーズ: (一言で)\n解説: (2〜3文の具体的な説明)\n\n' +
+      'これを繰り返す形式で、他の説明文は不要。';
     var statusEl = document.getElementById('copy-status-' + id);
     var fallbackEl = document.getElementById('copy-fallback-' + id);
     try {
