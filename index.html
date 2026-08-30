@@ -127,6 +127,14 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .review-list li::before{ content:''; position:absolute; left:0; top:9px; width:5px; height:5px; border-radius:50%; background:var(--ink-faint); }
 .review-text{ display:block; font-size:15px; line-height:1.6; }
 .review-source{ display:block; font-size:12px; color:var(--ink-faint); margin-top:3px; }
+.pick-card{ background:var(--accent-soft); border-radius:12px; padding:16px; margin-bottom:24px; }
+.pick-label{ font-size:12px; color:var(--accent-ink); font-weight:500; margin:0 0 8px; }
+.pick-text{ font-family:var(--font-display); font-size:17px; line-height:1.6; color:var(--accent-ink); margin:0 0 8px; text-wrap:balance; }
+.pick-source{ font-size:12px; color:var(--accent-ink); opacity:0.75; margin:0 0 12px; }
+.btn-shuffle{ padding:8px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:var(--surface); color:var(--ink); font-family:var(--font-body); font-size:13px; cursor:pointer; }
+.link-open{ display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); }
+.settings-desc{ font-size:13px; color:var(--ink-soft); margin:0 0 12px; line-height:1.6; }
+input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; color:var(--ink); }
 @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
 </style>
 </head>
@@ -136,9 +144,9 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 (function () {
   var STORAGE_KEY = 'kizuki-note-entries';
   var SEED_ENTRIES = [
-    { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-28' },
-    { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-26' },
-    { id: 'mt8mvmljcw0cr', title: '7つの習慣', genre: 'growth', author: '', source: '', memo: '', date: '2026-08-25' }
+    { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-28' },
+    { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-26' },
+    { id: 'mt8mvmljcw0cr', title: '7つの習慣', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-25' }
   ];
 
   var GENRES = [
@@ -167,6 +175,8 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
   var filterGenre = 'all';
   var expandedId = null;
   var drafts = {};
+  var searchQuery = '';
+  var pickOffset = 0;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -187,6 +197,84 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 
   function bulletsOf(memo) {
     return (memo || '').split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+  }
+
+  function matchesSearch(entry, q) {
+    if (!q) return true;
+    var hay = (entry.title + ' ' + (entry.author || '') + ' ' + (entry.memo || '')).toLowerCase();
+    return hay.indexOf(q.toLowerCase()) !== -1;
+  }
+
+  function allBulletsFlat() {
+    var out = [];
+    state.entries.forEach(function (e) {
+      bulletsOf(e.memo).forEach(function (b) {
+        out.push({ text: b, title: e.title, genre: e.genre });
+      });
+    });
+    return out;
+  }
+
+  function hashStr(s) {
+    var h = 0;
+    for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+    return Math.abs(h);
+  }
+
+  function exportBackup() {
+    var data = JSON.stringify(state.entries, null, 2);
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'kizuki-note-backup-' + todayStr() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function handleImportFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var parsed;
+      try { parsed = JSON.parse(reader.result); } catch (e) {
+        var errEl = document.getElementById('import-status');
+        if (errEl) errEl.textContent = 'ファイルの形式が正しくありません';
+        return;
+      }
+      if (!Array.isArray(parsed)) {
+        var errEl2 = document.getElementById('import-status');
+        if (errEl2) errEl2.textContent = 'ファイルの形式が正しくありません';
+        return;
+      }
+      var existingIds = {};
+      state.entries.forEach(function (e) { existingIds[e.id] = true; });
+      var newEntries = state.entries.slice();
+      var added = 0;
+      parsed.forEach(function (item) {
+        if (!item || typeof item.title !== 'string' || !item.title.trim()) return;
+        var id = (typeof item.id === 'string' && item.id) ? item.id : (Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+        if (existingIds[id]) return;
+        existingIds[id] = true;
+        newEntries.push({
+          id: id,
+          title: item.title,
+          genre: GENRES.some(function (g) { return g.id === item.genre; }) ? item.genre : 'other',
+          author: typeof item.author === 'string' ? item.author : '',
+          source: typeof item.source === 'string' ? item.source : '',
+          url: typeof item.url === 'string' ? item.url : '',
+          memo: typeof item.memo === 'string' ? item.memo : '',
+          date: typeof item.date === 'string' ? item.date : todayStr()
+        });
+        added++;
+      });
+      var skipped = parsed.length - added;
+      persist(newEntries);
+      var statusEl = document.getElementById('import-status');
+      if (statusEl) statusEl.textContent = added + '件の記録を追加しました（' + skipped + '件は既存のためスキップ）';
+    };
+    reader.readAsText(file);
   }
 
   function persist(newEntries) {
@@ -229,7 +317,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
     if (expandedId === id) { expandedId = null; render(); return; }
     var entry = state.entries.find(function (e) { return e.id === id; });
     if (entry && !drafts[id]) {
-      drafts[id] = { title: entry.title, author: entry.author || '', source: entry.source || '', memo: entry.memo || '', genre: entry.genre };
+      drafts[id] = { title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', memo: entry.memo || '', genre: entry.genre };
     }
     expandedId = id;
     render();
@@ -245,7 +333,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
     errEl.textContent = '';
     var entry = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      title: title, genre: selected.dataset.genre, author: '', source: '', memo: '', date: todayStr()
+      title: title, genre: selected.dataset.genre, author: '', source: '', url: '', memo: '', date: todayStr()
     };
     persist([entry].concat(state.entries));
   }
@@ -259,7 +347,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
     }
     var newEntries = state.entries.map(function (e) {
       if (e.id !== id) return e;
-      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), memo: (d.memo || '').trim() };
+      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), memo: (d.memo || '').trim() };
     });
     persist(newEntries);
   }
@@ -303,7 +391,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
       (bulletCount > 0 ? '<span class="count-badge">気づき ' + bulletCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>');
     var body = '';
     if (isOpen) {
-      var d = drafts[entry.id] || { title: entry.title, author: entry.author || '', source: entry.source || '', memo: entry.memo || '', genre: entry.genre };
+      var d = drafts[entry.id] || { title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', memo: entry.memo || '', genre: entry.genre };
       var editChips = GENRES.map(function (gg) {
         var sel = d.genre === gg.id ? ' is-selected' : '';
         return '<button type="button" class="chip genre-' + gg.id + sel + '" data-action="edit-genre" data-id="' + entry.id + '" data-genre="' + gg.id + '">' + esc(gg.label) + '</button>';
@@ -325,6 +413,11 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
           '<div class="field">' +
             '<label for="es-' + entry.id + '">情報源</label>' +
             '<input type="text" id="es-' + entry.id + '" data-field="source" data-id="' + entry.id + '" placeholder="YouTube / フライヤー / 本 など" value="' + esc(d.source) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="eu-' + entry.id + '">URL（任意）</label>' +
+            '<input type="text" id="eu-' + entry.id + '" data-field="url" data-id="' + entry.id + '" placeholder="https://..." value="' + esc(d.url) + '">' +
+            (d.url ? '<a class="link-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">元の動画・ページを開く ▸</a>' : '') +
           '</div>' +
           '<div class="field">' +
             '<button type="button" class="btn-copy" data-action="copy-research" data-id="' + entry.id + '">Claude用の調査文をコピー</button>' +
@@ -363,17 +456,37 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
       })).join('');
     var list = state.entries
       .filter(function (e) { return filterGenre === 'all' || e.genre === filterGenre; })
+      .filter(function (e) { return matchesSearch(e, searchQuery); })
       .slice()
       .sort(function (a, b) { return b.date.localeCompare(a.date) || b.id.localeCompare(a.id); });
     var listHtml;
     if (list.length === 0) {
       listHtml = state.entries.length === 0
         ? '<div class="empty-state"><strong>まだ記録がありません</strong><p>「追加」タブからタイトルを記録してみましょう。</p></div>'
-        : '<div class="empty-state"><p>このジャンルの記録はまだありません。</p></div>';
+        : '<div class="empty-state"><p>' + (searchQuery ? '検索に一致する記録がありません。' : 'このジャンルの記録はまだありません。') + '</p></div>';
     } else {
       listHtml = '<div class="entry-list">' + list.map(renderEntryCard).join('') + '</div>';
     }
-    return '<div class="filter-row">' + filterChips + '</div>' + listHtml;
+    return (
+      '<div class="field"><input type="text" id="search-box" placeholder="タイトル・著者・メモを検索" value="' + esc(searchQuery) + '"></div>' +
+      '<div class="filter-row">' + filterChips + '</div>' + listHtml
+    );
+  }
+
+  function renderPickCard() {
+    var pool = allBulletsFlat();
+    if (!pool.length) return '';
+    var seed = hashStr(todayStr()) + pickOffset;
+    var pick = pool[seed % pool.length];
+    var g = genreOf(pick.genre);
+    return (
+      '<div class="pick-card">' +
+        '<p class="pick-label">今日の1つ</p>' +
+        '<p class="pick-text">' + esc(pick.text) + '</p>' +
+        '<p class="pick-source"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span>　' + esc(pick.title) + '</p>' +
+        '<button type="button" class="btn-shuffle" data-action="shuffle-pick">別の気づきを見る</button>' +
+      '</div>'
+    );
   }
 
   function renderReviewTab() {
@@ -388,7 +501,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
     if (totalCount === 0) {
       return '<div class="empty-state"><strong>まだ気づきがありません</strong><p>本棚でメモを書くと、ここにジャンルごとにまとまって表示されます。</p></div>';
     }
-    return GENRES.map(function (g) {
+    return renderPickCard() + GENRES.map(function (g) {
       var items = byGenre[g.id];
       if (!items.length) return '';
       var lis = items.map(function (it) {
@@ -401,6 +514,22 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
     }).join('');
   }
 
+  function renderSettingsTab() {
+    return (
+      '<div class="card">' +
+        '<label>バックアップ</label>' +
+        '<p class="settings-desc">記録をJSONファイルに書き出します。機種変更の前や、定期的な保存におすすめです。</p>' +
+        '<button type="button" class="btn-primary" data-action="export-backup">JSONファイルに書き出す</button>' +
+      '</div>' +
+      '<div class="card" style="margin-top:16px;">' +
+        '<label for="import-file">復元</label>' +
+        '<p class="settings-desc">書き出したJSONファイルを選ぶと、まだ無い記録だけ追加されます（既存の記録は上書きされません）。</p>' +
+        '<input type="file" id="import-file" accept="application/json">' +
+        '<p class="copy-status" id="import-status" aria-live="polite"></p>' +
+      '</div>'
+    );
+  }
+
   function render() {
     var app = document.getElementById('app');
     app.innerHTML =
@@ -409,8 +538,12 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
         '<button type="button" class="tab-btn' + (activeTab === 'add' ? ' is-active' : '') + '" data-action="tab" data-tab="add">追加</button>' +
         '<button type="button" class="tab-btn' + (activeTab === 'browse' ? ' is-active' : '') + '" data-action="tab" data-tab="browse">本棚</button>' +
         '<button type="button" class="tab-btn' + (activeTab === 'review' ? ' is-active' : '') + '" data-action="tab" data-tab="review">ふりかえり</button>' +
+        '<button type="button" class="tab-btn' + (activeTab === 'settings' ? ' is-active' : '') + '" data-action="tab" data-tab="settings">設定</button>' +
       '</div>' +
-      (activeTab === 'add' ? renderAddTab() : activeTab === 'browse' ? renderBrowseTab() : renderReviewTab());
+      (activeTab === 'add' ? renderAddTab()
+        : activeTab === 'browse' ? renderBrowseTab()
+        : activeTab === 'review' ? renderReviewTab()
+        : renderSettingsTab());
   }
 
   function init() {
@@ -435,13 +568,31 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
       else if (action === 'save') handleSaveEntry(el.dataset.id);
       else if (action === 'delete') handleDelete(el.dataset.id);
       else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
+      else if (action === 'shuffle-pick') { pickOffset++; render(); }
+      else if (action === 'export-backup') exportBackup();
     });
     app.addEventListener('input', function (e) {
+      if (e.target.id === 'search-box') {
+        searchQuery = e.target.value;
+        var cursorPos = e.target.selectionStart;
+        render();
+        var newInput = document.getElementById('search-box');
+        if (newInput) {
+          newInput.focus();
+          newInput.setSelectionRange(cursorPos, cursorPos);
+        }
+        return;
+      }
       var field = e.target.dataset.field;
       var id = e.target.dataset.id;
       if (!field || !id) return;
       if (!drafts[id]) drafts[id] = {};
       drafts[id][field] = e.target.value;
+    });
+    app.addEventListener('change', function (e) {
+      if (e.target.id === 'import-file' && e.target.files && e.target.files[0]) {
+        handleImportFile(e.target.files[0]);
+      }
     });
     render();
   }
