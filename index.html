@@ -70,8 +70,9 @@ body{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-b
 .tab-btn.is-active{ background:var(--accent); color:#fff; border-color:var(--accent); }
 .card{ background:var(--surface); border:0.5px solid var(--border); border-radius:12px; padding:16px; }
 label{ display:block; font-size:12px; color:var(--ink-soft); margin:0 0 6px; }
-input[type=text], textarea{ width:100%; font-family:var(--font-body); font-size:15px; color:var(--ink); background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:10px 12px; }
-input[type=text]:focus, textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+input[type=text], input[type=date], textarea{ width:100%; font-family:var(--font-body); font-size:15px; color:var(--ink); background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:10px 12px; }
+input[type=text]:focus, input[type=date]:focus, textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+input[type=date]{ color-scheme:light dark; }
 textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .field{ margin-bottom:14px; }
 .chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
@@ -155,6 +156,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 <script>
 (function () {
   var STORAGE_KEY = 'kizuki-note-entries';
+  var LAST_DELETED_KEY = 'kizuki-note-last-deleted';
   var SEED_ENTRIES = [
     { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-28' },
     { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-26' },
@@ -195,6 +197,22 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 
   function saveEntries(entries) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+  }
+
+  function loadLastDeleted() {
+    try {
+      var raw = localStorage.getItem(LAST_DELETED_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+
+  function saveLastDeleted(entry) {
+    try { localStorage.setItem(LAST_DELETED_KEY, JSON.stringify(entry)); } catch (e) {}
+  }
+
+  function clearLastDeleted() {
+    try { localStorage.removeItem(LAST_DELETED_KEY); } catch (e) {}
   }
 
   var state = { entries: loadEntries() };
@@ -363,7 +381,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     if (expandedId === id) { expandedId = null; render(); return; }
     if (!drafts[id]) {
       drafts[id] = {
-        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
+        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre, date: entry.date,
         points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
       };
       if (detailsExpanded[id] === undefined) {
@@ -396,19 +414,33 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       document.getElementById('edit-error-' + id).textContent = 'タイトルを入力してください';
       return;
     }
-    var points = (d.points || [])
-      .map(function (p) { return { id: p.id, phrase: (p.phrase || '').trim(), detail: (p.detail || '').trim() }; })
-      .filter(function (p) { return p.phrase; });
+    var rawPoints = (d.points || []).map(function (p) { return { id: p.id, phrase: (p.phrase || '').trim(), detail: (p.detail || '').trim() }; });
+    var orphanDetails = rawPoints.filter(function (p) { return !p.phrase && p.detail; }).length;
+    if (orphanDetails > 0) {
+      document.getElementById('edit-error-' + id).textContent = 'キーフレーズが未入力の解説が' + orphanDetails + '件あります。キーフレーズを入力するか、その解説を削除してください';
+      return;
+    }
+    var points = rawPoints.filter(function (p) { return p.phrase; });
     var newEntries = state.entries.map(function (e) {
       if (e.id !== id) return e;
-      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), points: points };
+      var date = (d.date || '').trim() || e.date;
+      return { id: e.id, date: date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), points: points };
     });
     persist(newEntries);
   }
 
   function handleDelete(id, skipConfirm) {
     if (!skipConfirm && !confirm('この記録を削除しますか？')) return;
+    var deleted = state.entries.find(function (e) { return e.id === id; });
+    if (deleted) saveLastDeleted(deleted);
     persist(state.entries.filter(function (e) { return e.id !== id; }));
+  }
+
+  function restoreLastDeleted() {
+    var entry = loadLastDeleted();
+    if (!entry) return;
+    clearLastDeleted();
+    persist([entry].concat(state.entries));
   }
 
   function renderAddTab() {
@@ -446,7 +478,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var body = '';
     if (isOpen) {
       var d = drafts[entry.id] || {
-        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
+        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre, date: entry.date,
         points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
       };
       var editChips = GENRES.map(function (gg) {
@@ -466,6 +498,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
             '<div class="field">' +
               '<label>ジャンル</label>' +
               '<div class="chip-row">' + editChips + '</div>' +
+            '</div>' +
+            '<div class="field">' +
+              '<label for="ed-' + entry.id + '">記録日</label>' +
+              '<input type="date" id="ed-' + entry.id + '" data-field="date" data-id="' + entry.id + '" value="' + esc(d.date) + '">' +
             '</div>' +
             '<div class="field">' +
               '<label for="ea-' + entry.id + '">著者</label>' +
@@ -596,7 +632,16 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function renderSettingsTab() {
+    var lastDeleted = loadLastDeleted();
+    var undoHtml = lastDeleted ? (
+      '<div class="card" style="margin-bottom:16px;">' +
+        '<label>元に戻す</label>' +
+        '<p class="settings-desc">直前に削除した「' + esc(lastDeleted.title) + '」を復元できます。</p>' +
+        '<button type="button" class="btn-primary" data-action="restore-deleted">元に戻す</button>' +
+      '</div>'
+    ) : '';
     return (
+      undoHtml +
       '<div class="card">' +
         '<label>バックアップ</label>' +
         '<p class="settings-desc">記録をJSONファイルに書き出します。機種変更の前や、定期的な保存におすすめです。</p>' +
@@ -650,6 +695,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
       else if (action === 'shuffle-pick') { pickOffset++; pickRevealed = false; render(); }
       else if (action === 'export-backup') exportBackup();
+      else if (action === 'restore-deleted') restoreLastDeleted();
       else if (action === 'toggle-pick') { pickRevealed = !pickRevealed; render(); }
       else if (action === 'toggle-point') {
         var pid = el.dataset.pointId;
@@ -744,6 +790,12 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('service-worker.js').catch(function () {});
+    });
   }
 })();
 </script>
