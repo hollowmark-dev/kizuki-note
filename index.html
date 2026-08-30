@@ -118,6 +118,7 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .empty-state p{ margin:6px 0 0; font-size:14px; }
 .empty-state strong{ font-family:var(--font-display); font-size:17px; color:var(--ink); font-weight:600; }
 .btn-copy{ width:100%; padding:10px; border-radius:8px; border:0.5px solid var(--border-strong); background:var(--surface-2); color:var(--ink); font-family:var(--font-body); font-size:13px; cursor:pointer; }
+.btn-toggle-details{ display:block; background:none; border:none; padding:0; margin:0 0 14px; font-family:var(--font-body); font-size:13px; color:var(--ink-soft); cursor:pointer; text-align:left; }
 .copy-status{ font-size:12px; color:var(--ink-soft); margin:6px 0 0; min-height:14px; }
 .copy-fallback{ width:100%; margin-top:8px; font-family:var(--font-body); font-size:12px; color:var(--ink); background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:8px; min-height:60px; }
 .review-section{ margin-bottom:28px; }
@@ -202,6 +203,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   var searchQuery = '';
   var pickOffset = 0;
   var revealedPoints = {};
+  var detailsExpanded = {};
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -333,7 +335,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     try {
       if (!navigator.clipboard) throw new Error('no clipboard api');
       await navigator.clipboard.writeText(prompt);
-      if (statusEl) statusEl.textContent = 'コピーしました。Claudeアプリに貼り付けてね';
+      if (statusEl) statusEl.textContent = 'コピーしました。AIアプリに貼り付けてね';
       if (fallbackEl) fallbackEl.style.display = 'none';
     } catch (e) {
       if (statusEl) statusEl.textContent = '自動コピーできませんでした。下の文章を選択してコピーしてください';
@@ -357,6 +359,9 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
         points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
       };
+      if (detailsExpanded[id] === undefined) {
+        detailsExpanded[id] = !!(entry.author || entry.source || entry.url);
+      }
     }
     expandedId = id;
     render();
@@ -451,21 +456,26 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
             '<label>ジャンル</label>' +
             '<div class="chip-row">' + editChips + '</div>' +
           '</div>' +
+          '<button type="button" class="btn-toggle-details" data-action="toggle-details" data-id="' + entry.id + '">' +
+            (detailsExpanded[entry.id] ? '︿ 著者・情報源・URLを隠す' : '﹀ 著者・情報源・URLを追加（任意）') +
+          '</button>' +
+          (detailsExpanded[entry.id] ? (
+            '<div class="field">' +
+              '<label for="ea-' + entry.id + '">著者</label>' +
+              '<input type="text" id="ea-' + entry.id + '" data-field="author" data-id="' + entry.id + '" value="' + esc(d.author) + '">' +
+            '</div>' +
+            '<div class="field">' +
+              '<label for="es-' + entry.id + '">情報源</label>' +
+              '<input type="text" id="es-' + entry.id + '" data-field="source" data-id="' + entry.id + '" placeholder="YouTube / フライヤー / 本 など" value="' + esc(d.source) + '">' +
+            '</div>' +
+            '<div class="field">' +
+              '<label for="eu-' + entry.id + '">URL</label>' +
+              '<input type="text" id="eu-' + entry.id + '" data-field="url" data-id="' + entry.id + '" placeholder="https://..." value="' + esc(d.url) + '">' +
+              (d.url ? '<a class="link-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">元の動画・ページを開く ▸</a>' : '') +
+            '</div>'
+          ) : '') +
           '<div class="field">' +
-            '<label for="ea-' + entry.id + '">著者</label>' +
-            '<input type="text" id="ea-' + entry.id + '" data-field="author" data-id="' + entry.id + '" value="' + esc(d.author) + '">' +
-          '</div>' +
-          '<div class="field">' +
-            '<label for="es-' + entry.id + '">情報源</label>' +
-            '<input type="text" id="es-' + entry.id + '" data-field="source" data-id="' + entry.id + '" placeholder="YouTube / フライヤー / 本 など" value="' + esc(d.source) + '">' +
-          '</div>' +
-          '<div class="field">' +
-            '<label for="eu-' + entry.id + '">URL（任意）</label>' +
-            '<input type="text" id="eu-' + entry.id + '" data-field="url" data-id="' + entry.id + '" placeholder="https://..." value="' + esc(d.url) + '">' +
-            (d.url ? '<a class="link-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">元の動画・ページを開く ▸</a>' : '') +
-          '</div>' +
-          '<div class="field">' +
-            '<button type="button" class="btn-copy" data-action="copy-research" data-id="' + entry.id + '">Claude用の調査文をコピー</button>' +
+            '<button type="button" class="btn-copy" data-action="copy-research" data-id="' + entry.id + '">AI調査用にコピー</button>' +
             '<p class="copy-status" id="copy-status-' + entry.id + '" aria-live="polite"></p>' +
             '<textarea class="copy-fallback" id="copy-fallback-' + entry.id + '" readonly style="display:none;"></textarea>' +
           '</div>' +
@@ -648,6 +658,11 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         render();
         var rows = document.querySelectorAll('[data-id="' + eid + '"].point-phrase');
         if (rows.length) rows[rows.length - 1].focus();
+      }
+      else if (action === 'toggle-details') {
+        var did = el.dataset.id;
+        detailsExpanded[did] = !detailsExpanded[did];
+        render();
       }
       else if (action === 'remove-point') {
         var eid2 = el.dataset.id;
