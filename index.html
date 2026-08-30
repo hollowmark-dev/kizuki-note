@@ -123,14 +123,23 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .review-section{ margin-bottom:28px; }
 .review-heading{ margin:0 0 12px; }
 .review-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
-.review-list li{ padding-left:14px; position:relative; }
-.review-list li::before{ content:''; position:absolute; left:0; top:9px; width:5px; height:5px; border-radius:50%; background:var(--ink-faint); }
-.review-text{ display:block; font-size:15px; line-height:1.6; }
+.review-phrase{ display:flex; align-items:baseline; gap:6px; width:100%; text-align:left; background:none; border:none; padding:0; font-family:var(--font-display); font-size:15px; color:var(--ink); cursor:pointer; line-height:1.6; }
+.review-phrase .chev{ color:var(--ink-faint); font-size:12px; flex-shrink:0; }
 .review-source{ display:block; font-size:12px; color:var(--ink-faint); margin-top:3px; }
+.review-detail{ font-size:13px; color:var(--ink-soft); line-height:1.7; margin:6px 0 0; }
 .pick-card{ background:var(--accent-soft); border-radius:12px; padding:16px; margin-bottom:24px; }
 .pick-label{ font-size:12px; color:var(--accent-ink); font-weight:500; margin:0 0 8px; }
-.pick-text{ font-family:var(--font-display); font-size:17px; line-height:1.6; color:var(--accent-ink); margin:0 0 8px; text-wrap:balance; }
+.pick-phrase{ display:flex; align-items:baseline; gap:6px; width:100%; text-align:left; background:none; border:none; padding:0; font-family:var(--font-display); font-size:17px; color:var(--accent-ink); cursor:pointer; line-height:1.6; margin:0 0 8px; text-wrap:balance; }
+.pick-phrase .chev{ font-size:13px; flex-shrink:0; opacity:0.7; }
+.pick-detail{ font-size:13px; color:var(--accent-ink); opacity:0.85; line-height:1.7; margin:0 0 12px; }
 .pick-source{ font-size:12px; color:var(--accent-ink); opacity:0.75; margin:0 0 12px; }
+.points-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }
+.point-row{ background:var(--surface-2); border:0.5px solid var(--border); border-radius:8px; padding:10px; }
+.point-row-head{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.point-phrase{ flex:1; }
+.point-remove{ width:28px; height:28px; flex-shrink:0; border-radius:50%; border:0.5px solid var(--border-strong); background:var(--surface); color:var(--ink-soft); font-size:15px; line-height:1; cursor:pointer; }
+.point-detail{ min-height:56px; font-size:13px; }
+.btn-add-point{ width:100%; padding:10px; border-radius:8px; border:1px dashed var(--border-strong); background:transparent; color:var(--ink-soft); font-family:var(--font-body); font-size:13px; cursor:pointer; }
 .btn-shuffle{ padding:8px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:var(--surface); color:var(--ink); font-family:var(--font-body); font-size:13px; cursor:pointer; }
 .link-open{ display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); }
 .settings-desc{ font-size:13px; color:var(--ink-soft); margin:0 0 12px; line-height:1.6; }
@@ -144,9 +153,9 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 (function () {
   var STORAGE_KEY = 'kizuki-note-entries';
   var SEED_ENTRIES = [
-    { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-28' },
-    { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-26' },
-    { id: 'mt8mvmljcw0cr', title: '7つの習慣', genre: 'growth', author: '', source: '', url: '', memo: '', date: '2026-08-25' }
+    { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-28' },
+    { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-26' },
+    { id: 'mt8mvmljcw0cr', title: '7つの習慣', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-25' }
   ];
 
   var GENRES = [
@@ -158,10 +167,25 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     { id: 'other', label: 'その他' }
   ];
 
+  function genId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function migrateEntry(e) {
+    if (Array.isArray(e.points)) return e;
+    var points = bulletsOf(e.memo).map(function (text) {
+      return { id: genId(), phrase: text, detail: '' };
+    });
+    var migrated = {};
+    for (var k in e) { if (k !== 'memo') migrated[k] = e[k]; }
+    migrated.points = points;
+    return migrated;
+  }
+
   function loadEntries() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) return JSON.parse(raw).map(migrateEntry);
     } catch (e) {}
     return SEED_ENTRIES;
   }
@@ -177,6 +201,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   var drafts = {};
   var searchQuery = '';
   var pickOffset = 0;
+  var revealedPoints = {};
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -201,15 +226,16 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 
   function matchesSearch(entry, q) {
     if (!q) return true;
-    var hay = (entry.title + ' ' + (entry.author || '') + ' ' + (entry.memo || '')).toLowerCase();
+    var pointText = (entry.points || []).map(function (p) { return p.phrase + ' ' + p.detail; }).join(' ');
+    var hay = (entry.title + ' ' + (entry.author || '') + ' ' + pointText).toLowerCase();
     return hay.indexOf(q.toLowerCase()) !== -1;
   }
 
-  function allBulletsFlat() {
+  function allPointsFlat() {
     var out = [];
     state.entries.forEach(function (e) {
-      bulletsOf(e.memo).forEach(function (b) {
-        out.push({ text: b, title: e.title, genre: e.genre });
+      (e.points || []).forEach(function (p) {
+        out.push({ id: p.id, phrase: p.phrase, detail: p.detail, title: e.title, genre: e.genre });
       });
     });
     return out;
@@ -254,9 +280,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var added = 0;
       parsed.forEach(function (item) {
         if (!item || typeof item.title !== 'string' || !item.title.trim()) return;
-        var id = (typeof item.id === 'string' && item.id) ? item.id : (Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+        var id = (typeof item.id === 'string' && item.id) ? item.id : genId();
         if (existingIds[id]) return;
         existingIds[id] = true;
+        var points;
+        if (Array.isArray(item.points)) {
+          points = item.points.filter(function (p) { return p && typeof p.phrase === 'string'; }).map(function (p) {
+            return { id: (typeof p.id === 'string' && p.id) ? p.id : genId(), phrase: p.phrase, detail: typeof p.detail === 'string' ? p.detail : '' };
+          });
+        } else if (typeof item.memo === 'string') {
+          points = bulletsOf(item.memo).map(function (text) { return { id: genId(), phrase: text, detail: '' }; });
+        } else {
+          points = [];
+        }
         newEntries.push({
           id: id,
           title: item.title,
@@ -264,7 +300,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
           author: typeof item.author === 'string' ? item.author : '',
           source: typeof item.source === 'string' ? item.source : '',
           url: typeof item.url === 'string' ? item.url : '',
-          memo: typeof item.memo === 'string' ? item.memo : '',
+          points: points,
           date: typeof item.date === 'string' ? item.date : todayStr()
         });
         added++;
@@ -317,7 +353,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     if (expandedId === id) { expandedId = null; render(); return; }
     var entry = state.entries.find(function (e) { return e.id === id; });
     if (entry && !drafts[id]) {
-      drafts[id] = { title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', memo: entry.memo || '', genre: entry.genre };
+      drafts[id] = {
+        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
+        points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
+      };
     }
     expandedId = id;
     render();
@@ -332,8 +371,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     if (!selected) { errEl.textContent = 'ジャンルを選んでください'; return; }
     errEl.textContent = '';
     var entry = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      title: title, genre: selected.dataset.genre, author: '', source: '', url: '', memo: '', date: todayStr()
+      id: genId(),
+      title: title, genre: selected.dataset.genre, author: '', source: '', url: '', points: [], date: todayStr()
     };
     persist([entry].concat(state.entries));
   }
@@ -345,9 +384,12 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       document.getElementById('edit-error-' + id).textContent = 'タイトルを入力してください';
       return;
     }
+    var points = (d.points || [])
+      .map(function (p) { return { id: p.id, phrase: (p.phrase || '').trim(), detail: (p.detail || '').trim() }; })
+      .filter(function (p) { return p.phrase; });
     var newEntries = state.entries.map(function (e) {
       if (e.id !== id) return e;
-      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), memo: (d.memo || '').trim() };
+      return { id: e.id, date: e.date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), points: points };
     });
     persist(newEntries);
   }
@@ -358,7 +400,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function renderAddTab() {
-    var pending = state.entries.filter(function (e) { return !e.memo; }).length;
+    var pending = state.entries.filter(function (e) { return !(e.points && e.points.length); }).length;
     var chips = GENRES.map(function (g) {
       return '<button type="button" class="chip genre-' + g.id + '" data-action="add-genre" data-genre="' + g.id + '">' + esc(g.label) + '</button>';
     }).join('');
@@ -385,13 +427,16 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   function renderEntryCard(entry) {
     var isOpen = expandedId === entry.id;
     var g = genreOf(entry.genre);
-    var bulletCount = bulletsOf(entry.memo).length;
+    var pointCount = (entry.points || []).length;
     var badges = '<span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span>' +
       '<span class="date-text">' + esc(entry.date) + '</span>' +
-      (bulletCount > 0 ? '<span class="count-badge">気づき ' + bulletCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>');
+      (pointCount > 0 ? '<span class="count-badge">気づき ' + pointCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>');
     var body = '';
     if (isOpen) {
-      var d = drafts[entry.id] || { title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', memo: entry.memo || '', genre: entry.genre };
+      var d = drafts[entry.id] || {
+        title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre,
+        points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
+      };
       var editChips = GENRES.map(function (gg) {
         var sel = d.genre === gg.id ? ' is-selected' : '';
         return '<button type="button" class="chip genre-' + gg.id + sel + '" data-action="edit-genre" data-id="' + entry.id + '" data-genre="' + gg.id + '">' + esc(gg.label) + '</button>';
@@ -425,8 +470,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
             '<textarea class="copy-fallback" id="copy-fallback-' + entry.id + '" readonly style="display:none;"></textarea>' +
           '</div>' +
           '<div class="field">' +
-            '<label for="em-' + entry.id + '">学び・気づき（1行に1つずつ）</label>' +
-            '<textarea id="em-' + entry.id + '" data-field="memo" data-id="' + entry.id + '" placeholder="心に残ったポイントを1行ずつ書く">' + esc(d.memo) + '</textarea>' +
+            '<label>学び・気づき</label>' +
+            '<div class="points-list">' +
+              (d.points || []).map(function (p) {
+                return '<div class="point-row">' +
+                  '<div class="point-row-head">' +
+                    '<input type="text" class="point-phrase" data-field="phrase" data-id="' + entry.id + '" data-point-id="' + p.id + '" placeholder="キーフレーズ" value="' + esc(p.phrase) + '">' +
+                    '<button type="button" class="point-remove" data-action="remove-point" data-id="' + entry.id + '" data-point-id="' + p.id + '" aria-label="このポイントを削除">×</button>' +
+                  '</div>' +
+                  '<textarea class="point-detail" data-field="detail" data-id="' + entry.id + '" data-point-id="' + p.id + '" placeholder="解説・具体的な内容（あとで読み返す用）">' + esc(p.detail) + '</textarea>' +
+                '</div>';
+              }).join('') +
+            '</div>' +
+            '<button type="button" class="btn-add-point" data-action="add-point" data-id="' + entry.id + '">+ ポイントを追加</button>' +
           '</div>' +
           '<p class="error-text" id="edit-error-' + entry.id + '" aria-live="polite"></p>' +
           '<div class="row-actions">' +
@@ -474,15 +530,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function renderPickCard() {
-    var pool = allBulletsFlat();
+    var pool = allPointsFlat();
     if (!pool.length) return '';
     var seed = hashStr(todayStr()) + pickOffset;
     var pick = pool[seed % pool.length];
     var g = genreOf(pick.genre);
+    var isRevealed = !!revealedPoints[pick.id];
     return (
       '<div class="pick-card">' +
         '<p class="pick-label">今日の1つ</p>' +
-        '<p class="pick-text">' + esc(pick.text) + '</p>' +
+        '<button type="button" class="pick-phrase" data-action="toggle-point" data-point-id="' + pick.id + '">' +
+          '<span class="chev">' + (isRevealed ? '⌄' : '›') + '</span><span>' + esc(pick.phrase) + '</span>' +
+        '</button>' +
+        (isRevealed ? '<p class="pick-detail">' + esc(pick.detail || '（解説は書かれていません）') + '</p>' : '') +
         '<p class="pick-source"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span>　' + esc(pick.title) + '</p>' +
         '<button type="button" class="btn-shuffle" data-action="shuffle-pick">別の気づきを見る</button>' +
       '</div>'
@@ -492,10 +552,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   function renderReviewTab() {
     var byGenre = {};
     GENRES.forEach(function (g) { byGenre[g.id] = []; });
-    state.entries.forEach(function (e) {
-      bulletsOf(e.memo).forEach(function (b) {
-        byGenre[e.genre].push({ text: b, title: e.title });
-      });
+    allPointsFlat().forEach(function (p) {
+      byGenre[p.genre].push(p);
     });
     var totalCount = GENRES.reduce(function (sum, g) { return sum + byGenre[g.id].length; }, 0);
     if (totalCount === 0) {
@@ -505,7 +563,14 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var items = byGenre[g.id];
       if (!items.length) return '';
       var lis = items.map(function (it) {
-        return '<li><span class="review-text">' + esc(it.text) + '</span><span class="review-source">' + esc(it.title) + '</span></li>';
+        var isRevealed = !!revealedPoints[it.id];
+        return '<li>' +
+          '<button type="button" class="review-phrase" data-action="toggle-point" data-point-id="' + it.id + '">' +
+            '<span class="chev">' + (isRevealed ? '⌄' : '›') + '</span><span>' + esc(it.phrase) + '</span>' +
+          '</button>' +
+          '<span class="review-source">' + esc(it.title) + '</span>' +
+          (isRevealed ? '<p class="review-detail">' + esc(it.detail || '（解説は書かれていません）') + '</p>' : '') +
+        '</li>';
       }).join('');
       return '<section class="review-section">' +
         '<h2 class="review-heading"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span></h2>' +
@@ -570,6 +635,28 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
       else if (action === 'shuffle-pick') { pickOffset++; render(); }
       else if (action === 'export-backup') exportBackup();
+      else if (action === 'toggle-point') {
+        var pid = el.dataset.pointId;
+        revealedPoints[pid] = !revealedPoints[pid];
+        render();
+      }
+      else if (action === 'add-point') {
+        var eid = el.dataset.id;
+        if (!drafts[eid]) drafts[eid] = {};
+        if (!drafts[eid].points) drafts[eid].points = [];
+        drafts[eid].points.push({ id: genId(), phrase: '', detail: '' });
+        render();
+        var rows = document.querySelectorAll('[data-id="' + eid + '"].point-phrase');
+        if (rows.length) rows[rows.length - 1].focus();
+      }
+      else if (action === 'remove-point') {
+        var eid2 = el.dataset.id;
+        var pid2 = el.dataset.pointId;
+        if (drafts[eid2] && drafts[eid2].points) {
+          drafts[eid2].points = drafts[eid2].points.filter(function (p) { return p.id !== pid2; });
+          render();
+        }
+      }
     });
     app.addEventListener('input', function (e) {
       if (e.target.id === 'search-box') {
@@ -585,6 +672,14 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       }
       var field = e.target.dataset.field;
       var id = e.target.dataset.id;
+      var pointId = e.target.dataset.pointId;
+      if (pointId && id) {
+        if (!drafts[id]) drafts[id] = {};
+        if (!drafts[id].points) drafts[id].points = [];
+        var pt = drafts[id].points.find(function (p) { return p.id === pointId; });
+        if (pt) pt[field] = e.target.value;
+        return;
+      }
       if (!field || !id) return;
       if (!drafts[id]) drafts[id] = {};
       drafts[id][field] = e.target.value;
