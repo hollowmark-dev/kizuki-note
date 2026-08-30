@@ -113,7 +113,10 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .entry-body{ padding:0 16px 16px; border-top:0.5px solid var(--border); padding-top:14px; }
 .row-actions{ display:flex; gap:10px; margin-top:12px; }
 .btn-save{ flex:1; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-family:var(--font-body); font-size:14px; font-weight:500; cursor:pointer; }
-.btn-delete{ padding:10px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:transparent; color:var(--danger); font-family:var(--font-body); font-size:14px; cursor:pointer; }
+.btn-delete-hold{ position:relative; overflow:hidden; padding:10px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:transparent; color:var(--danger); font-family:var(--font-body); font-size:14px; cursor:pointer; touch-action:none; user-select:none; -webkit-user-select:none; }
+.btn-delete-hold::before{ content:''; position:absolute; inset:0; background:var(--danger-bg); width:0%; z-index:0; }
+.btn-delete-hold.is-holding::before{ width:100%; transition:width 800ms linear; }
+.btn-delete-hold span{ position:relative; z-index:1; }
 .empty-state{ text-align:center; padding:48px 16px; color:var(--ink-soft); }
 .empty-state p{ margin:6px 0 0; font-size:14px; }
 .empty-state strong{ font-family:var(--font-display); font-size:17px; color:var(--ink); font-weight:600; }
@@ -204,6 +207,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   var pickOffset = 0;
   var revealedPoints = {};
   var detailsExpanded = {};
+  var pickRevealed = false;
+  var holdTimer = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -401,8 +406,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     persist(newEntries);
   }
 
-  function handleDelete(id) {
-    if (!confirm('この記録を削除しますか？')) return;
+  function handleDelete(id, skipConfirm) {
+    if (!skipConfirm && !confirm('この記録を削除しますか？')) return;
     persist(state.entries.filter(function (e) { return e.id !== id; }));
   }
 
@@ -499,7 +504,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
           '<p class="error-text" id="edit-error-' + entry.id + '" aria-live="polite"></p>' +
           '<div class="row-actions">' +
             '<button type="button" class="btn-save" data-action="save" data-id="' + entry.id + '">保存する</button>' +
-            '<button type="button" class="btn-delete" data-action="delete" data-id="' + entry.id + '">削除</button>' +
+            '<button type="button" class="btn-delete-hold" data-id="' + entry.id + '"><span>長押しで削除</span></button>' +
           '</div>' +
         '</div>';
     }
@@ -547,11 +552,11 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var seed = hashStr(todayStr()) + pickOffset;
     var pick = pool[seed % pool.length];
     var g = genreOf(pick.genre);
-    var isRevealed = !!revealedPoints[pick.id];
+    var isRevealed = pickRevealed;
     return (
       '<div class="pick-card">' +
         '<p class="pick-label">今日の1つ</p>' +
-        '<button type="button" class="pick-phrase" data-action="toggle-point" data-point-id="' + pick.id + '">' +
+        '<button type="button" class="pick-phrase" data-action="toggle-pick">' +
           '<span class="chev">' + (isRevealed ? '⌄' : '›') + '</span><span>' + esc(pick.phrase) + '</span>' +
         '</button>' +
         (isRevealed ? '<p class="pick-detail">' + esc(pick.detail || '（解説は書かれていません）') + '</p>' : '') +
@@ -643,10 +648,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         el.parentElement.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('is-selected', c === el); });
       }
       else if (action === 'save') handleSaveEntry(el.dataset.id);
-      else if (action === 'delete') handleDelete(el.dataset.id);
       else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
-      else if (action === 'shuffle-pick') { pickOffset++; render(); }
+      else if (action === 'shuffle-pick') { pickOffset++; pickRevealed = false; render(); }
       else if (action === 'export-backup') exportBackup();
+      else if (action === 'toggle-pick') { pickRevealed = !pickRevealed; render(); }
       else if (action === 'toggle-point') {
         var pid = el.dataset.pointId;
         revealedPoints[pid] = !revealedPoints[pid];
@@ -667,6 +672,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         render();
       }
       else if (action === 'remove-point') {
+        if (!confirm('このポイントを削除しますか？')) return;
         var eid2 = el.dataset.id;
         var pid2 = el.dataset.pointId;
         if (drafts[eid2] && drafts[eid2].points) {
@@ -675,6 +681,23 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         }
       }
     });
+    app.addEventListener('pointerdown', function (e) {
+      var btn = e.target.closest('.btn-delete-hold');
+      if (!btn) return;
+      btn.classList.add('is-holding');
+      clearTimeout(holdTimer);
+      var holdId = btn.dataset.id;
+      holdTimer = setTimeout(function () {
+        btn.classList.remove('is-holding');
+        handleDelete(holdId, true);
+      }, 800);
+    });
+    var cancelHold = function () {
+      clearTimeout(holdTimer);
+      document.querySelectorAll('.btn-delete-hold.is-holding').forEach(function (b) { b.classList.remove('is-holding'); });
+    };
+    window.addEventListener('pointerup', cancelHold);
+    window.addEventListener('pointercancel', cancelHold);
     app.addEventListener('input', function (e) {
       if (e.target.id === 'search-box') {
         searchQuery = e.target.value;
