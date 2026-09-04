@@ -147,6 +147,10 @@ textarea{ resize:vertical; min-height:84px; line-height:1.6; }
 .btn-shuffle{ padding:8px 14px; border-radius:8px; border:0.5px solid var(--border-strong); background:var(--surface); color:var(--ink); font-family:var(--font-body); font-size:13px; cursor:pointer; }
 .link-open{ display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); }
 .settings-desc{ font-size:13px; color:var(--ink-soft); margin:0 0 12px; line-height:1.6; }
+.undo-bar{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--accent-soft); color:var(--accent-ink); font-size:13px; padding:10px 14px; border-radius:10px; margin-bottom:12px; }
+.undo-bar button{ background:none; border:none; color:var(--accent-ink); text-decoration:underline; font-family:var(--font-body); font-size:13px; cursor:pointer; padding:0; flex-shrink:0; }
+.toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:var(--bg); font-size:13px; padding:10px 18px; border-radius:999px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,0.25); }
+.draft-badge{ font-size:11px; color:var(--g-money-fg); background:var(--g-money-bg); padding:3px 9px; border-radius:999px; }
 input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; color:var(--ink); }
 @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
 </style>
@@ -157,6 +161,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 (function () {
   var STORAGE_KEY = 'kizuki-note-entries';
   var LAST_DELETED_KEY = 'kizuki-note-last-deleted';
+  var LAST_BACKUP_KEY = 'kizuki-note-last-backup';
+  var DRAFTS_KEY = 'kizuki-note-drafts';
   var SEED_ENTRIES = [
     { id: 'mtcrycu685fz9', title: '限りある時間の使い方', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-28' },
     { id: 'mt9cwj348yav4', title: '大事なことだけ聞く力', genre: 'growth', author: '', source: '', url: '', points: [], date: '2026-08-26' },
@@ -177,13 +183,23 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function migrateEntry(e) {
-    if (Array.isArray(e.points)) return e;
-    var points = bulletsOf(e.memo).map(function (text) {
-      return { id: genId(), phrase: text, detail: '' };
-    });
-    var migrated = {};
-    for (var k in e) { if (k !== 'memo') migrated[k] = e[k]; }
-    migrated.points = points;
+    var migrated;
+    if (Array.isArray(e.points)) {
+      migrated = e;
+    } else {
+      var points = bulletsOf(e.memo).map(function (text) {
+        return { id: genId(), phrase: text, detail: '' };
+      });
+      migrated = {};
+      for (var k in e) { if (k !== 'memo') migrated[k] = e[k]; }
+      migrated.points = points;
+    }
+    if (!GENRES.some(function (g) { return g.id === migrated.genre; })) {
+      migrated = Object.assign({}, migrated, { genre: 'other' });
+    }
+    if (!migrated.date) {
+      migrated = Object.assign({}, migrated, { date: todayStr() });
+    }
     return migrated;
   }
 
@@ -196,7 +212,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function saveEntries(entries) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); return true; } catch (e) { return false; }
+  }
+
+  function recordBackup() {
+    try { localStorage.setItem(LAST_BACKUP_KEY, JSON.stringify({ date: todayStr(), count: state.entries.length })); } catch (e) {}
+  }
+
+  function loadLastBackup() {
+    try {
+      var raw = localStorage.getItem(LAST_BACKUP_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
   }
 
   function loadLastDeleted() {
@@ -215,17 +243,58 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     try { localStorage.removeItem(LAST_DELETED_KEY); } catch (e) {}
   }
 
+  function loadDrafts() {
+    try {
+      var raw = localStorage.getItem(DRAFTS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+  }
+
+  function persistDrafts() {
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)); } catch (e) {}
+  }
+
+  function scheduleDraftSave() {
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(persistDrafts, 500);
+  }
+
+  function draftDiffers(entry, draft) {
+    if (!draft) return false;
+    if ((draft.title || '') !== entry.title) return true;
+    if ((draft.genre || entry.genre) !== entry.genre) return true;
+    if ((draft.author || '') !== (entry.author || '')) return true;
+    if ((draft.source || '') !== (entry.source || '')) return true;
+    if ((draft.url || '') !== (entry.url || '')) return true;
+    if ((draft.date || entry.date) !== entry.date) return true;
+    var dp = (draft.points || []).map(function (p) { return (p.phrase || '') + '|' + (p.detail || ''); }).join('\n');
+    var ep = (entry.points || []).map(function (p) { return (p.phrase || '') + '|' + (p.detail || ''); }).join('\n');
+    return dp !== ep;
+  }
+
   var state = { entries: loadEntries() };
   var activeTab = 'add';
   var filterGenre = 'all';
   var expandedId = null;
-  var drafts = {};
+  var drafts = loadDrafts();
+  Object.keys(drafts).forEach(function (id) {
+    if (!state.entries.some(function (e) { return e.id === id; })) delete drafts[id];
+  });
+  var draftSaveTimer = null;
+  var flashMessage = null;
+  var flashTimer = null;
   var searchQuery = '';
+  var reviewSearchQuery = '';
+  var reviewFilterGenre = 'all';
   var pickOffset = 0;
   var revealedPoints = {};
   var detailsExpanded = {};
   var pickRevealed = false;
   var holdTimer = null;
+  var suppressToggleFor = null;
+  var composingInputId = null;
+  var recentlyDeleted = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -248,10 +317,20 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     return (memo || '').split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
   }
 
+  function isSafeUrl(url) {
+    return /^https?:\/\//i.test(url || '');
+  }
+
   function matchesSearch(entry, q) {
     if (!q) return true;
     var pointText = (entry.points || []).map(function (p) { return p.phrase + ' ' + p.detail; }).join(' ');
     var hay = (entry.title + ' ' + (entry.author || '') + ' ' + pointText).toLowerCase();
+    return hay.indexOf(q.toLowerCase()) !== -1;
+  }
+
+  function matchesPointSearch(p, q) {
+    if (!q) return true;
+    var hay = (p.phrase + ' ' + p.detail + ' ' + p.title).toLowerCase();
     return hay.indexOf(q.toLowerCase()) !== -1;
   }
 
@@ -282,6 +361,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    recordBackup();
   }
 
   function handleImportFile(file) {
@@ -339,8 +419,11 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
 
   function persist(newEntries) {
     state = { entries: newEntries };
-    saveEntries(newEntries);
+    var ok = saveEntries(newEntries);
     render();
+    if (!ok) {
+      alert('保存に失敗しました。端末の空き容量が不足している可能性があります。「設定」からバックアップを取ることをおすすめします。');
+    }
   }
 
   async function copyResearchPrompt(id) {
@@ -372,7 +455,32 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     }
   }
 
-  function setTab(t) { activeTab = t; expandedId = null; render(); }
+  function parseAiResponse(text) {
+    var lines = (text || '').split('\n');
+    var points = [];
+    var current = null;
+    var mode = null;
+    var phraseRe = /^[\s\-\*・\d\.\)]*\**\s*キーフレーズ\**\s*[:：]\s*(.*)$/;
+    var detailRe = /^[\s\-\*・\d\.\)]*\**\s*解説\**\s*[:：]\s*(.*)$/;
+    lines.forEach(function (line) {
+      var pm = line.match(phraseRe);
+      var dm = line.match(detailRe);
+      if (pm) {
+        current = { id: genId(), phrase: pm[1].trim(), detail: '' };
+        points.push(current);
+        mode = 'phrase';
+      } else if (dm) {
+        if (!current) { current = { id: genId(), phrase: '', detail: '' }; points.push(current); }
+        current.detail = dm[1].trim();
+        mode = 'detail';
+      } else if (mode === 'detail' && current && line.trim()) {
+        current.detail += (current.detail ? ' ' : '') + line.trim();
+      }
+    });
+    return points.filter(function (p) { return p.phrase || p.detail; });
+  }
+
+  function setTab(t) { activeTab = t; expandedId = null; recentlyDeleted = null; render(); }
   function setFilter(g) { filterGenre = g; render(); }
 
   function toggleExpand(id) {
@@ -384,9 +492,10 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         title: entry.title, author: entry.author || '', source: entry.source || '', url: entry.url || '', genre: entry.genre, date: entry.date,
         points: (entry.points || []).map(function (p) { return { id: p.id, phrase: p.phrase, detail: p.detail }; })
       };
-      if (detailsExpanded[id] === undefined) {
-        detailsExpanded[id] = !!(entry.author || entry.source || entry.url);
-      }
+    }
+    if (detailsExpanded[id] === undefined) {
+      var d0 = drafts[id];
+      detailsExpanded[id] = !!(entry.author || entry.source || entry.url || d0.author || d0.source || d0.url);
     }
     expandedId = id;
     render();
@@ -405,6 +514,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       title: title, genre: selected.dataset.genre, author: '', source: '', url: '', points: [], date: todayStr()
     };
     persist([entry].concat(state.entries));
+    showFlash('「' + title + '」を追加しました');
   }
 
   function handleSaveEntry(id) {
@@ -426,13 +536,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var date = (d.date || '').trim() || e.date;
       return { id: e.id, date: date, title: title, genre: d.genre || e.genre, author: (d.author || '').trim(), source: (d.source || '').trim(), url: (d.url || '').trim(), points: points };
     });
+    delete drafts[id];
+    persistDrafts();
     persist(newEntries);
+    showFlash('保存しました');
   }
 
   function handleDelete(id, skipConfirm) {
     if (!skipConfirm && !confirm('この記録を削除しますか？')) return;
     var deleted = state.entries.find(function (e) { return e.id === id; });
-    if (deleted) saveLastDeleted(deleted);
+    if (deleted) {
+      saveLastDeleted(deleted);
+      recentlyDeleted = { title: deleted.title };
+    }
     persist(state.entries.filter(function (e) { return e.id !== id; }));
   }
 
@@ -440,7 +556,9 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var entry = loadLastDeleted();
     if (!entry) return;
     clearLastDeleted();
+    recentlyDeleted = null;
     persist([entry].concat(state.entries));
+    showFlash('「' + entry.title + '」を元に戻しました');
   }
 
   function renderAddTab() {
@@ -472,9 +590,11 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     var isOpen = expandedId === entry.id;
     var g = genreOf(entry.genre);
     var pointCount = (entry.points || []).length;
+    var hasDraft = !isOpen && draftDiffers(entry, drafts[entry.id]);
     var badges = '<span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span>' +
       '<span class="date-text">' + esc(entry.date) + '</span>' +
-      (pointCount > 0 ? '<span class="count-badge">気づき ' + pointCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>');
+      (pointCount > 0 ? '<span class="count-badge">気づき ' + pointCount + '件</span>' : '<span class="memo-badge">メモ未記入</span>') +
+      (hasDraft ? '<span class="draft-badge">書きかけの下書きあり</span>' : '');
     var body = '';
     if (isOpen) {
       var d = drafts[entry.id] || {
@@ -514,13 +634,19 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
             '<div class="field">' +
               '<label for="eu-' + entry.id + '">URL</label>' +
               '<input type="text" id="eu-' + entry.id + '" data-field="url" data-id="' + entry.id + '" placeholder="https://..." value="' + esc(d.url) + '">' +
-              (d.url ? '<a class="link-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">元の動画・ページを開く ▸</a>' : '') +
+              (isSafeUrl(d.url) ? '<a class="link-open" href="' + esc(d.url) + '" target="_blank" rel="noopener">元の動画・ページを開く ▸</a>' : '') +
             '</div>'
           ) : '') +
           '<div class="field">' +
             '<button type="button" class="btn-copy" data-action="copy-research" data-id="' + entry.id + '">AI調査用にコピー</button>' +
             '<p class="copy-status" id="copy-status-' + entry.id + '" aria-live="polite"></p>' +
             '<textarea class="copy-fallback" id="copy-fallback-' + entry.id + '" readonly style="display:none;"></textarea>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="paste-ai-' + entry.id + '">AIの回答を貼り付け</label>' +
+            '<textarea id="paste-ai-' + entry.id + '" placeholder="コピーした回答をそのまま貼り付け"></textarea>' +
+            '<button type="button" class="btn-copy" style="margin-top:8px;" data-action="import-ai-response" data-id="' + entry.id + '">貼り付けた内容を取り込む</button>' +
+            '<p class="copy-status" id="import-ai-status-' + entry.id + '" aria-live="polite"></p>' +
           '</div>' +
           '<div class="field">' +
             '<label>学び・気づき</label>' +
@@ -575,7 +701,14 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     } else {
       listHtml = '<div class="entry-list">' + list.map(renderEntryCard).join('') + '</div>';
     }
+    var undoBar = recentlyDeleted ? (
+      '<div class="undo-bar">' +
+        '<span>「' + esc(recentlyDeleted.title) + '」を削除しました</span>' +
+        '<button type="button" data-action="restore-deleted">元に戻す</button>' +
+      '</div>'
+    ) : '';
     return (
+      undoBar +
       '<div class="field"><input type="text" id="search-box" placeholder="タイトル・著者・メモを検索" value="' + esc(searchQuery) + '"></div>' +
       '<div class="filter-row">' + filterChips + '</div>' + listHtml
     );
@@ -602,33 +735,48 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
   }
 
   function renderReviewTab() {
-    var byGenre = {};
-    GENRES.forEach(function (g) { byGenre[g.id] = []; });
-    allPointsFlat().forEach(function (p) {
-      byGenre[p.genre].push(p);
-    });
-    var totalCount = GENRES.reduce(function (sum, g) { return sum + byGenre[g.id].length; }, 0);
-    if (totalCount === 0) {
+    var allPoints = allPointsFlat();
+    if (allPoints.length === 0) {
       return '<div class="empty-state"><strong>まだ気づきがありません</strong><p>本棚でメモを書くと、ここにジャンルごとにまとまって表示されます。</p></div>';
     }
-    return renderPickCard() + GENRES.map(function (g) {
-      var items = byGenre[g.id];
-      if (!items.length) return '';
-      var lis = items.map(function (it) {
-        var isRevealed = !!revealedPoints[it.id];
-        return '<li>' +
-          '<button type="button" class="review-phrase" data-action="toggle-point" data-point-id="' + it.id + '">' +
-            '<span class="chev">' + (isRevealed ? '⌄' : '›') + '</span><span>' + esc(it.phrase) + '</span>' +
-          '</button>' +
-          '<span class="review-source">' + esc(it.title) + '</span>' +
-          (isRevealed ? '<p class="review-detail">' + esc(it.detail || '（解説は書かれていません）') + '</p>' : '') +
-        '</li>';
+    var filterChips = ['<button type="button" class="filter-chip' + (reviewFilterGenre === 'all' ? ' is-active' : '') + '" data-action="review-filter" data-genre="all">全て</button>']
+      .concat(GENRES.map(function (g) {
+        return '<button type="button" class="filter-chip' + (reviewFilterGenre === g.id ? ' is-active' : '') + '" data-action="review-filter" data-genre="' + g.id + '">' + esc(g.label) + '</button>';
+      })).join('');
+    var searchHtml = '<div class="field"><input type="text" id="review-search-box" placeholder="フレーズ・解説・タイトルを検索" value="' + esc(reviewSearchQuery) + '"></div>';
+
+    var byGenre = {};
+    GENRES.forEach(function (g) { byGenre[g.id] = []; });
+    allPoints
+      .filter(function (p) { return reviewFilterGenre === 'all' || p.genre === reviewFilterGenre; })
+      .filter(function (p) { return matchesPointSearch(p, reviewSearchQuery); })
+      .forEach(function (p) { byGenre[genreOf(p.genre).id].push(p); });
+    var visibleCount = GENRES.reduce(function (sum, g) { return sum + byGenre[g.id].length; }, 0);
+
+    var listHtml;
+    if (visibleCount === 0) {
+      listHtml = '<div class="empty-state"><p>条件に一致する気づきがありません。</p></div>';
+    } else {
+      listHtml = GENRES.map(function (g) {
+        var items = byGenre[g.id];
+        if (!items.length) return '';
+        var lis = items.map(function (it) {
+          var isRevealed = !!revealedPoints[it.id];
+          return '<li>' +
+            '<button type="button" class="review-phrase" data-action="toggle-point" data-point-id="' + it.id + '">' +
+              '<span class="chev">' + (isRevealed ? '⌄' : '›') + '</span><span>' + esc(it.phrase) + '</span>' +
+            '</button>' +
+            '<span class="review-source">' + esc(it.title) + '</span>' +
+            (isRevealed ? '<p class="review-detail">' + esc(it.detail || '（解説は書かれていません）') + '</p>' : '') +
+          '</li>';
+        }).join('');
+        return '<section class="review-section">' +
+          '<h2 class="review-heading"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span></h2>' +
+          '<ul class="review-list">' + lis + '</ul>' +
+        '</section>';
       }).join('');
-      return '<section class="review-section">' +
-        '<h2 class="review-heading"><span class="genre-badge genre-' + g.id + '">' + esc(g.label) + '</span></h2>' +
-        '<ul class="review-list">' + lis + '</ul>' +
-      '</section>';
-    }).join('');
+    }
+    return searchHtml + '<div class="filter-row">' + filterChips + '</div>' + renderPickCard() + listHtml;
   }
 
   function renderSettingsTab() {
@@ -640,11 +788,21 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         '<button type="button" class="btn-primary" data-action="restore-deleted">元に戻す</button>' +
       '</div>'
     ) : '';
+    var entryCount = state.entries.length;
+    var lastBackup = loadLastBackup();
+    var backupStatus;
+    if (!lastBackup) {
+      backupStatus = '現在 ' + entryCount + ' 件の記録があります。まだバックアップを取っていません。';
+    } else {
+      var diff = entryCount - lastBackup.count;
+      backupStatus = '現在 ' + entryCount + ' 件の記録があります。最終バックアップ: ' + lastBackup.date + '（' + lastBackup.count + '件時点）'
+        + (diff >= 5 ? '　前回から' + diff + '件増えています。書き出しをおすすめします。' : '');
+    }
     return (
       undoHtml +
       '<div class="card">' +
         '<label>バックアップ</label>' +
-        '<p class="settings-desc">記録をJSONファイルに書き出します。機種変更の前や、定期的な保存におすすめです。</p>' +
+        '<p class="settings-desc">' + esc(backupStatus) + '</p>' +
         '<button type="button" class="btn-primary" data-action="export-backup">JSONファイルに書き出す</button>' +
       '</div>' +
       '<div class="card" style="margin-top:16px;">' +
@@ -654,6 +812,22 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         '<p class="copy-status" id="import-status" aria-live="polite"></p>' +
       '</div>'
     );
+  }
+
+  function showFlash(msg) {
+    flashMessage = msg;
+    render();
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { flashMessage = null; render(); }, 2200);
+  }
+
+  function finishSearchRender(elId, cursorPos) {
+    render();
+    var el = document.getElementById(elId);
+    if (el) {
+      el.focus();
+      el.setSelectionRange(cursorPos, cursorPos);
+    }
   }
 
   function render() {
@@ -669,7 +843,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       (activeTab === 'add' ? renderAddTab()
         : activeTab === 'browse' ? renderBrowseTab()
         : activeTab === 'review' ? renderReviewTab()
-        : renderSettingsTab());
+        : renderSettingsTab()) +
+      (flashMessage ? '<div class="toast">' + esc(flashMessage) + '</div>' : '');
   }
 
   function init() {
@@ -678,23 +853,43 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var el = e.target.closest('[data-action]');
       if (!el) return;
       var action = el.dataset.action;
+      if (action === 'toggle' && suppressToggleFor === el.dataset.id) { suppressToggleFor = null; return; }
       if (action === 'tab') setTab(el.dataset.tab);
       else if (action === 'add-genre') {
         document.querySelectorAll('#add-genres .chip').forEach(function (c) { c.classList.toggle('is-selected', c === el); });
       }
       else if (action === 'submit-add') handleAdd();
       else if (action === 'filter') setFilter(el.dataset.genre);
+      else if (action === 'review-filter') { reviewFilterGenre = el.dataset.genre; render(); }
       else if (action === 'toggle') toggleExpand(el.dataset.id);
       else if (action === 'edit-genre') {
         var id = el.dataset.id;
         if (!drafts[id]) drafts[id] = {};
         drafts[id].genre = el.dataset.genre;
         el.parentElement.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('is-selected', c === el); });
+        scheduleDraftSave();
       }
       else if (action === 'save') handleSaveEntry(el.dataset.id);
       else if (action === 'copy-research') copyResearchPrompt(el.dataset.id);
+      else if (action === 'import-ai-response') {
+        var aiEid = el.dataset.id;
+        var textarea = document.getElementById('paste-ai-' + aiEid);
+        var parsedPoints = parseAiResponse(textarea ? textarea.value : '');
+        if (!parsedPoints.length) {
+          var noneEl = document.getElementById('import-ai-status-' + aiEid);
+          if (noneEl) noneEl.textContent = '取り込める内容が見つかりませんでした。「キーフレーズ:」「解説:」の形式か確認してください';
+          return;
+        }
+        if (!drafts[aiEid]) drafts[aiEid] = {};
+        if (!drafts[aiEid].points) drafts[aiEid].points = [];
+        drafts[aiEid].points = drafts[aiEid].points.concat(parsedPoints);
+        scheduleDraftSave();
+        render();
+        var statusEl4 = document.getElementById('import-ai-status-' + aiEid);
+        if (statusEl4) statusEl4.textContent = parsedPoints.length + '件のポイントを追加しました。内容を確認して保存してください';
+      }
       else if (action === 'shuffle-pick') { pickOffset++; pickRevealed = false; render(); }
-      else if (action === 'export-backup') exportBackup();
+      else if (action === 'export-backup') { exportBackup(); render(); }
       else if (action === 'restore-deleted') restoreLastDeleted();
       else if (action === 'toggle-pick') { pickRevealed = !pickRevealed; render(); }
       else if (action === 'toggle-point') {
@@ -707,6 +902,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         if (!drafts[eid]) drafts[eid] = {};
         if (!drafts[eid].points) drafts[eid].points = [];
         drafts[eid].points.push({ id: genId(), phrase: '', detail: '' });
+        scheduleDraftSave();
         render();
         var rows = document.querySelectorAll('[data-id="' + eid + '"].point-phrase');
         if (rows.length) rows[rows.length - 1].focus();
@@ -722,6 +918,7 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         var pid2 = el.dataset.pointId;
         if (drafts[eid2] && drafts[eid2].points) {
           drafts[eid2].points = drafts[eid2].points.filter(function (p) { return p.id !== pid2; });
+          scheduleDraftSave();
           render();
         }
       }
@@ -736,6 +933,8 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
       var holdId = head.dataset.id;
       holdTimer = setTimeout(function () {
         head.classList.remove('is-holding');
+        suppressToggleFor = holdId;
+        setTimeout(function () { if (suppressToggleFor === holdId) suppressToggleFor = null; }, 500);
         handleDelete(holdId);
       }, 800);
     });
@@ -752,16 +951,26 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
     };
     window.addEventListener('pointerup', cancelHold);
     window.addEventListener('pointercancel', cancelHold);
+    app.addEventListener('compositionstart', function (e) {
+      if (e.target.id === 'search-box' || e.target.id === 'review-search-box') composingInputId = e.target.id;
+    });
+    app.addEventListener('compositionend', function (e) {
+      if (composingInputId === e.target.id) {
+        composingInputId = null;
+        finishSearchRender(e.target.id, e.target.selectionStart);
+      }
+    });
     app.addEventListener('input', function (e) {
       if (e.target.id === 'search-box') {
         searchQuery = e.target.value;
-        var cursorPos = e.target.selectionStart;
-        render();
-        var newInput = document.getElementById('search-box');
-        if (newInput) {
-          newInput.focus();
-          newInput.setSelectionRange(cursorPos, cursorPos);
-        }
+        if (e.isComposing) return;
+        finishSearchRender('search-box', e.target.selectionStart);
+        return;
+      }
+      if (e.target.id === 'review-search-box') {
+        reviewSearchQuery = e.target.value;
+        if (e.isComposing) return;
+        finishSearchRender('review-search-box', e.target.selectionStart);
         return;
       }
       var field = e.target.dataset.field;
@@ -772,15 +981,18 @@ input[type=file]{ width:100%; font-family:var(--font-body); font-size:13px; colo
         if (!drafts[id].points) drafts[id].points = [];
         var pt = drafts[id].points.find(function (p) { return p.id === pointId; });
         if (pt) pt[field] = e.target.value;
+        scheduleDraftSave();
         return;
       }
       if (!field || !id) return;
       if (!drafts[id]) drafts[id] = {};
       drafts[id][field] = e.target.value;
+      scheduleDraftSave();
     });
     app.addEventListener('change', function (e) {
       if (e.target.id === 'import-file' && e.target.files && e.target.files[0]) {
         handleImportFile(e.target.files[0]);
+        e.target.value = '';
       }
     });
     render();
